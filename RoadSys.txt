@@ -1,0 +1,151 @@
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+
+
+public class RoadSys : MonoBehaviour
+{
+    //ПЕРЕМЕННЫЕ
+    //----------
+    struct PathInfo     // структура: информация о пути
+    {
+        public int pathIndex;   // принадлежность к пути
+        public int startPoint;  // точка старта
+    }
+    //--
+    struct UsedPoints   // структура: посещенные точки
+    {
+        public List<bool> pt;                   // список точек данного пути
+        public int size;                        // размер списка
+        public UsedPoints(int size) : this()    // конструктор:
+        {
+            pt = new List<bool>(size);              // задаем списку его размер
+        }
+    }
+    //--
+    public int i_CarNumber = 5;            // число создаваемых машин
+    public int i_MaxCars;                  // максимальное число машин (исходя из доступных точек всех путей)
+    public Transform t_VehileGroup;        // группа машин (родитель)
+    public Transform t_PathGroup;          // группа путей (родитель)
+    public Transform[] t_VehilePrefabs;    // префабы машин
+    public Transform[] t_PathPrefabs;      // префабы путей
+    private int i_RandomIndex;             // случайный индекс
+    //--
+    GameObject go_CurPrefab; // текущий префаб машины или пути
+    GameObject go_CurPath;   // текущий созданный экземпляр пути
+    GameObject go_CurVehile; // текущий созданный экземпляр машины
+    //--
+    List<int> li_PathIndexes = new List<int>(); // список индексов доступных путей
+
+
+
+    // START
+    //------
+    void Start()
+    {
+        //--- с о з д а е м   т а б л и ц у   п о с е щ е н н ы х   в е р ш и н   п у т е й
+        li_PathIndexes.Clear();                                         // обнуляем список индексов путей
+        UsedPoints[] ast_used = new UsedPoints[t_PathPrefabs.Length];   // создаем массив структур посещенных вершин (размер исходит из числа используемых путей)
+        i_MaxCars = 0;                                                  // обнуляем максимальное число машин
+        for (int i = 0; i < t_PathPrefabs.Length; i++)                  // идем по точкам всех префабов путей:
+        {
+            li_PathIndexes.Add(i);                                                                     // добавляем индекс текущего пути в лист свободных путей
+            int pointCount = t_PathPrefabs[i].GetComponent<MovePath>().t_PathElements.Length;          // получаем количество его вершин
+            UsedPoints st_used = new UsedPoints(pointCount);                                           // создаем структуру посещенных вершин текущего пути
+            st_used.size = pointCount;                                                                 // задаем размер списку структуры
+            Debug.Log(pointCount);
+            for (int j = 0; j < pointCount; j++)                                                       // перебираем точки текущего пути:
+            {
+                if (t_PathPrefabs[i].GetComponent<MovePath>().t_PathElements[j].tag == "CrossPoint")        // проверяем, не лежит ли точка на перекрестке:
+                {
+                    Debug.Log(t_PathPrefabs[i].GetComponent<MovePath>().t_PathElements[j].tag);
+                    st_used.pt.Add(true);                                                                       // если лежит, то отмечаем вершину посещенной
+                }
+                else                                                                                        // иначе:
+                {
+                    st_used.pt.Add(false);                                                                      // отмечаем вершину непосещенной
+                    i_MaxCars += 1;                                                                             // плюсуем счетчик максимального числа машин
+                    Debug.Log(t_PathPrefabs[i].GetComponent<MovePath>().t_PathElements[j].tag);
+                }
+            }
+            ast_used[i] = st_used;                                                                     // добавляем элемент в массив структур посещенных вершин
+        }
+        if (i_MaxCars < i_CarNumber) i_CarNumber = i_MaxCars;           // если введенное число машин превышает максимальное, берем максимальное
+        
+        //--- о ч и щ а е м   г р у п п ы
+        for (int i = 0; i < t_VehileGroup.childCount; i++) Destroy(t_VehileGroup.GetChild(i).gameObject);   // группа машин
+        for (int i = 0; i < t_PathGroup.childCount; i++) Destroy(t_PathGroup.GetChild(i).gameObject);       // группа путей
+
+        //--- с о з д а е м   т р а ф ф и к
+        for (int i = 0; i < i_CarNumber; i++)   // для каждой новой машины:
+        {
+            //--- машина
+            go_CurPrefab = t_VehilePrefabs[Random.Range(0, t_VehilePrefabs.Length)].gameObject;     // берем рандомный префаб машины
+            go_CurVehile = Instantiate(go_CurPrefab, this.transform.position, Quaternion.identity); // создаем его экземпляр в сцене
+            go_CurVehile.transform.SetParent(t_VehileGroup);                                        // перемещаем в группу машин
+            go_CurVehile.name = i.ToString();                                                       // именуем по-порядку
+            //--- путь
+            PathInfo CurrentPath = GetPath(ast_used);                                               // получаем путь и стартовую точку для текущей машины
+            go_CurPrefab = t_PathPrefabs[CurrentPath.pathIndex].gameObject;                         // берем префаб пути
+            go_CurPath = Instantiate(go_CurPrefab, this.transform.position, Quaternion.identity);   // создаем его экземпляр в сцене
+            go_CurPath.transform.SetParent(t_PathGroup);                                            // перемещаем в группу путей
+            go_CurPath.name = "Path" + i.ToString();                                                // именуем по-порядку
+            go_CurPath.transform.position = new Vector3(0, 0, 0);                                   // обнуляем его координаты
+            //--- настройки скриптов
+            go_CurVehile.GetComponent<FollowPath>().f_speed = Random.Range(5, 15);                  // выставляем машине случайную скорость
+            go_CurVehile.GetComponent<FollowPath>().MyPath = go_CurPath.GetComponent<MovePath>();   // выставляем ей путь
+            go_CurPath.GetComponent<MovePath>().i_MoveTo = CurrentPath.startPoint;                  // выставляем стартовую точку
+        }
+    }
+
+
+
+    //ПОЛУЧЕНИЕ ПУТИ И СТАРТОВОЙ ТОЧКИ
+    //--------------------------------
+    PathInfo GetPath(UsedPoints[] used)
+    {
+        PathInfo Path = new PathInfo();        // текущая структура пути
+        bool isDone = false;                   // триггер успешного размещения
+        while ( isDone == false )              // пока не разместили машину:
+        {
+            i_RandomIndex = li_PathIndexes[Random.Range(0, li_PathIndexes.Count)]; // получаем рандомный индекс из листа доступных путей
+            for (int k = 0; k < used[i_RandomIndex].pt.Count; k++)                 // перебираем все точки текущего пути:
+            {
+                if (isDone != true)                             // если до этого еще не выполнили размещение текущей машины
+                {
+                    if (used[i_RandomIndex].pt[k] == false)         // если текущая точка не занята:
+                    {
+                        Path.pathIndex = i_RandomIndex;                 // запоминаем путь
+                        Path.startPoint = k;                            // запоминаем текущую точку как стартовую
+                        used[i_RandomIndex].pt[k] = true;               // отмечаем текущую точку данного пути как использованную
+                        isDone = true;                                  // отмечаем успешное выполение процедуры
+                    }
+                }
+            }
+            if (isDone == false)                                    // иначе:
+            {
+                li_PathIndexes.RemoveAt(i_RandomIndex);                 // если в текущем пути не удалось разместить машину, убираем путь из списка доступных и повторяем до следующего успешного размещения;
+            }
+        }
+        return Path;                            // возвращаем путь и стартовую точку 
+    }
+
+
+
+    //ПОИСК ВЛОЖЕННЫХ ОБЪЕКТОВ
+    //------------------------
+    GameObject GetChildWithName(GameObject obj, string name)
+    {
+        Transform trans = obj.transform;            // выбранный объект сцены
+        Transform childTrans = trans.Find(name);    // предполагаемый дочерний объект с каким-то именем
+        if (childTrans != null)                         // если объект был найден (не пуст):
+        {
+            return childTrans.gameObject;                   // возвращаем его
+        }
+        else                                            //иначе:
+        {
+            return null;                                    // возвращаем пустоту
+        }
+    }
+}
